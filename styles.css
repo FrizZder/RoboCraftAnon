@@ -1,0 +1,31 @@
+.processed-image {
+    max-width: 100%;
+    max-height: 400px;
+    border-radius: 8px;
+    margin: 10px 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.faces-info {
+    color: #666;
+    font-size: 0.9em;
+    margin-top: 5px;
+    font-style: italic;
+}
+
+.drag-over {
+    border-color: #4a90e2;
+    background-color: rgba(74, 144, 226, 0.1);
+}
+
+.assistant-message {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    max-width: 80%;
+}
+
+.assistant-message p {
+    margin: 5px 0;
+    word-wrap: break-word;
+} 

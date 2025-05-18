@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RoboCraft Anon</title>
+    <script src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js" defer></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <style>
+        [x-cloak] { display: none !important; }
+        
+        .drop-zone {
+            border: 2px dashed #4B5563;
+            transition: all 0.3s ease;
+        }
+        
+        .drop-zone.dragover {
+            border-color: #3B82F6;
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+
+        .drop-zone-content {
+            transition: all 0.3s ease;
+        }
+
+        .drop-zone.dragover .drop-zone-content {
+            transform: scale(1.1);
+        }
+
+        .file-icon {
+            animation: bounce 1s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .upload-icon {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.1);
+                opacity: 0.7;
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .file-preview {
+            transition: all 0.3s ease;
+        }
+
+        .file-preview:hover {
+            transform: scale(1.05);
+        }
+
+        ::-webkit-scrollbar {
+            width: 0 !important;
+            height: 0 !important;
+            background: transparent;
+        }
+        html, body {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col" x-data="app()" x-cloak @keydown.window="onKeydown($event)">
+    <header class="relative bg-gray-800 border-b border-gray-700 p-4 flex items-center select-none" style="-webkit-app-region: drag;">
+        <div class="absolute left-4 flex items-center space-x-4 z-10" style="-webkit-app-region: no-drag;">
+            <button @click="toggleHistory" class="bg-gray-700 text-white px-3 py-1 rounded hover:bg-blue-600" x-text="t('history')"></button>
+        </div>
+        <h1 class="mx-auto text-xl font-bold text-center select-none">RoboCraft Anon</h1>
+        <div class="absolute right-4 flex items-center space-x-2 z-10" style="-webkit-app-region: no-drag;">
+            <button @click="openSettings" class="p-2 rounded hover:bg-gray-700">⚙️</button>
+            <button @click="windowMinimize" class="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-700 transition" title="Свернуть">
+                <svg class="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 18"></path></svg>
+            </button>
+            <button @click="toggleMaximize" class="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-700 transition" title="Развернуть/Восстановить">
+                <svg x-show="!isMaximized" class="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                <svg x-show="isMaximized" class="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="4" y="8" width="12" height="12" rx="2"/><path d="M8 8V4h12v12h-4"/></svg>
+            </button>
+            <button @click="windowClose" class="w-8 h-8 flex items-center justify-center rounded hover:bg-red-600 transition" title="Закрыть">
+                <svg class="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M6 18L18 6"></path></svg>
+            </button>
+        </div>
+    </header>
+    <div class="pl-8 pt-3 pb-2 text-lg font-semibold text-gray-300 select-none" x-text="t('chat')"></div>
+    <div class="flex-1 flex flex-col">
+        <div class="flex-1 overflow-y-auto p-4 space-y-4" x-ref="chatArea"
+            @dragover.prevent="onDragOver"
+            @dragleave.prevent="onDragLeave"
+            @drop.prevent="handleDrop">
+            <template x-for="(message, index) in messages" :key="index">
+                <div class="flex flex-col space-y-2" @contextmenu.prevent="openContextMenu(index, $event)">
+                    <div class="flex justify-end">
+                        <div class="bg-blue-600 rounded-lg p-3 max-w-[70%]">
+                            <template x-if="message.type === 'text'">
+                                <p x-text="message.user"></p>
+                            </template>
+                            <template x-if="message.type === 'file'">
+                                <div class="flex items-center space-x-2">
+                                    <i :class="getFileIcon(message.fileName)" class="text-lg"></i>
+                                    <span x-text="message.fileName"></span>
+                                    <button @click="downloadFile(message.originalFile)" class="text-sm hover:underline">
+                                        <i class="fas fa-download"></i> <span x-text="t('downloadOrig')"></span>
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                    <div class="flex justify-start">
+                        <div class="bg-gray-700 rounded-lg p-3 max-w-[70%]">
+                            <template x-if="message.type === 'text'">
+                                <p x-text="message.bot"></p>
+                            </template>
+                            <template x-if="message.type === 'file'">
+                                <div class="space-y-2">
+                                    <p x-text="message.bot"></p>
+                                    <div class="flex items-center space-x-2">
+                                        <button 
+                                            @click="downloadFile(message.anonymizedFile)" 
+                                            class="text-sm bg-blue-600 px-2 py-1 rounded hover:bg-blue-700"
+                                        >
+                                            <i class="fas fa-download"></i> <span x-text="t('downloadAnon')"></span>
+                                        </button>
+                                        <button 
+                                            @click="previewFile(message.anonymizedFile)" 
+                                            class="text-sm bg-gray-600 px-2 py-1 rounded hover:bg-gray-700"
+                                        >
+                                            <i class="fas fa-eye"></i> <span x-text="t('preview')"></span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <div 
+                x-show="isDragging"
+                class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+                @dragover.prevent
+                @drop.prevent="handleDrop"
+            >
+                <div class="drop-zone bg-gray-800 p-8 rounded-lg text-center w-96" :class="{ 'dragover': isDragging }">
+                    <div class="drop-zone-content">
+                        <div class="upload-icon text-6xl mb-4 text-blue-500">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                        </div>
+                        <p class="text-xl mb-2 font-bold" x-text="t('dragHere')"></p>
+                        <p class="text-gray-400 mb-4" x-text="t('supported')"></p>
+                        <div class="flex justify-center space-x-4">
+                            <div class="text-center">
+                                <i class="fas fa-image text-2xl text-blue-400"></i>
+                                <p class="text-sm mt-1">Изображения</p>
+                            </div>
+                            <div class="text-center">
+                                <i class="fas fa-file-pdf text-2xl text-red-400"></i>
+                                <p class="text-sm mt-1">PDF</p>
+                            </div>
+                            <div class="text-center">
+                                <i class="fas fa-file-alt text-2xl text-green-400"></i>
+                                <p class="text-sm mt-1">Текст</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="border-t border-gray-700 p-4">
+            <div class="flex items-center space-x-2">
+                <button 
+                    @click="openFilePicker"
+                    class="relative group flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-blue-400 shadow-lg hover:scale-110 transition-transform hover:from-blue-700 hover:to-blue-500 focus:outline-none"
+                    :title="t('attach')"
+                >
+                    <svg class="w-6 h-6 text-white group-hover:rotate-12 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.24 7.76l-7.07 7.07a3 3 0 104.24 4.24l7.07-7.07a5 5 0 10-7.07-7.07l-7.07 7.07"></path>
+                    </svg>
+                    <span class="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-gray-800 text-xs text-white px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" x-text="t('attach')"></span>
+                </button>
+                <input 
+                    type="text" 
+                    x-model="newMessage" 
+                    @keyup.enter="sendMessage"
+                    :placeholder="t('inputPlaceholder')"
+                    class="flex-1 bg-gray-800 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                <button 
+                    @click="sendMessage"
+                    class="bg-blue-600 px-4 py-2 rounded-lg hover:bg-blue-700"
+                    x-text="t('send')"
+                >
+                    Отправить
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div 
+        x-show="showSettings" 
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+        @click.self="showSettings = false"
+    >
+        <div class="bg-gray-800 rounded-lg p-6 w-96">
+            <h2 class="text-xl font-bold mb-4" x-text="t('settings')"></h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1" x-text="t('outputDir')"></label>
+                    <div class="flex">
+                        <input type="text" class="w-full bg-gray-700 rounded px-3 py-2" x-model="settings.outputDir" readonly>
+                        <button @click="selectOutputDir" class="ml-2 px-3 py-2 rounded bg-blue-600 hover:bg-blue-700" x-text="t('choose')"></button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1" x-text="t('language')"></label>
+                    <select class="w-full bg-gray-700 rounded px-3 py-2" x-model="settings.language" @change="changeLanguage(settings.language)">
+                        <option value="en">English</option>
+                        <option value="ru">Русский</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1" x-text="t('anonymLevel')"></label>
+                    <select class="w-full bg-gray-700 rounded px-3 py-2" x-model="settings.anonymizationLevel">
+                        <option value="basic" x-text="t('basic')"></option>
+                        <option value="advanced" x-text="t('advanced')"></option>
+                    </select>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end space-x-2">
+                <button @click="showSettings = false" class="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600" x-text="t('cancel')"></button>
+                <button @click="saveSettings" class="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700" x-text="t('save')"></button>
+            </div>
+        </div>
+    </div>
+
+    <div 
+        x-show="showPreview" 
+        class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center"
+        @click.self="showPreview = false"
+    >
+        <div class="bg-gray-800 rounded-lg p-4 max-w-4xl w-full max-h-[80vh] overflow-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold" x-text="previewFileName"></h3>
+                <button @click="showPreview = false" class="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <div class="preview-content">
+                <template x-if="previewType === 'image'">
+                    <img :src="previewData" class="max-w-full h-auto" />
+                </template>
+                <template x-if="previewType === 'pdf'">
+                    <iframe :src="previewData" class="w-full h-[60vh]"></iframe>
+                </template>
+                <template x-if="previewType === 'text'">
+                    <pre class="whitespace-pre-wrap bg-gray-900 p-4 rounded" x-text="previewData"></pre>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <div class="fixed top-4 right-4 space-y-2 z-50 transition-all duration-300">
+        <template x-for="note in notifications" :key="note.id">
+            <div :class="note.type === 'success' ? 'bg-green-600' : 'bg-red-600'" class="px-4 py-2 rounded text-white shadow transition-all duration-300 opacity-90" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95">
+                <span x-text="note.text"></span>
+            </div>
+        </template>
+    </div>
+
+    <div x-show="showHistory" @click.away="showHistory = false" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 -translate-x-10" x-transition:enter-end="opacity-100 translate-x-0" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100 translate-x-0" x-transition:leave-end="opacity-0 -translate-x-10" class="fixed left-0 top-0 w-80 h-full bg-gray-900 border-r border-gray-700 z-50 overflow-y-auto p-4">
+        <div class="flex justify-between items-center mb-4">
+            <span class="font-bold text-lg" x-text="t('history')"></span>
+            <button @click="toggleHistory" class="text-gray-400 hover:text-white">✕</button>
+        </div>
+        <template x-for="(msg, idx) in messages" :key="idx">
+            <div class="mb-2 p-2 rounded bg-gray-800">
+                <div class="text-xs text-gray-400" x-text="msg.type === 'file' ? msg.fileName : msg.user"></div>
+                <div class="text-xs" x-text="msg.bot"></div>
+            </div>
+        </template>
+    </div>
+
+    <div x-show="contextMenu.show" @click.away="closeContextMenu()" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95" :style="`top:${contextMenu.y}px;left:${contextMenu.x}px`" class="fixed bg-gray-800 rounded shadow z-50 min-w-[120px]">
+        <button @click="copyMessage(contextMenu.index)" class="block w-full text-left px-4 py-2 hover:bg-gray-700 text-white">Скопировать</button>
+        <button @click="deleteMessage(contextMenu.index)" class="block w-full text-left px-4 py-2 hover:bg-gray-700 text-red-400">Удалить</button>
+    </div>
+
+    <script>
+        function app() {
+            return {
+                showSettings: false,
+                showPreview: false,
+                isDragging: false,
+                dragCounter: 0,
+                newMessage: '',
+                messages: [],
+                previewData: null,
+                previewType: null,
+                previewFileName: '',
+                settings: {
+                    outputDir: '',
+                    language: 'ru',
+                    anonymizationLevel: 'basic'
+                },
+                translations: {
+                    ru: {
+                        attach: 'Прикрепить файл',
+                        send: 'Отправить',
+                        settings: 'Настройки',
+                        outputDir: 'Директория для сохранения',
+                        choose: 'Выбрать',
+                        language: 'Язык',
+                        anonymLevel: 'Уровень анонимизации',
+                        basic: 'Базовый',
+                        advanced: 'Расширенный',
+                        cancel: 'Отмена',
+                        save: 'Сохранить',
+                        preview: 'Предпросмотр',
+                        downloadAnon: 'Скачать аноним',
+                        downloadOrig: 'Скачать оригинал',
+                        dragHere: 'Перетащите файлы сюда',
+                        supported: 'Поддерживаются изображения, PDF и текстовые файлы',
+                        processing: 'Обработка...',
+                        anonymized: 'Файл анонимизирован',
+                        error: 'Ошибка',
+                        uploaded: 'Загружен файл:',
+                        inputPlaceholder: 'Введите текст или перетащите файл...',
+                        copied: 'Сообщение скопировано',
+                        deleted: 'Сообщение удалено',
+                        chat: 'Чат',
+                        history: 'История'
+                    },
+                    en: {
+                        attach: 'Attach file',
+                        send: 'Send',
+                        settings: 'Settings',
+                        outputDir: 'Output directory',
+                        choose: 'Choose',
+                        language: 'Language',
+                        anonymLevel: 'Anonymization level',
+                        basic: 'Basic',
+                        advanced: 'Advanced',
+                        cancel: 'Cancel',
+                        save: 'Save',
+                        preview: 'Preview',
+                        downloadAnon: 'Download anonymized',
+                        downloadOrig: 'Download original',
+                        dragHere: 'Drag files here',
+                        supported: 'Images, PDF and text files are supported',
+                        processing: 'Processing...',
+                        anonymized: 'File anonymized',
+                        error: 'Error',
+                        uploaded: 'Uploaded file:',
+                        inputPlaceholder: 'Enter text or drag a file...',
+                        copied: 'Message copied',
+                        deleted: 'Message deleted',
+                        chat: 'Chat',
+                        history: 'History'
+                    }
+                },
+                t(key) {
+                    return this.translations[this.settings.language][key] || key;
+                },
+                notifications: [],
+                notify(type, text) {
+                    const id = Date.now() + Math.random();
+                    this.notifications.push({ id, type, text });
+                    setTimeout(() => {
+                        this.notifications = this.notifications.filter(n => n.id !== id);
+                    }, 4000);
+                },
+                contextMenu: { show: false, x: 0, y: 0, index: null },
+                openContextMenu(index, event) {
+                    this.contextMenu = { show: true, x: event.clientX, y: event.clientY, index };
+                },
+                closeContextMenu() {
+                    this.contextMenu.show = false;
+                },
+                async copyMessage(index) {
+                    const msg = this.messages[index];
+                    await navigator.clipboard.writeText(msg.user + (msg.bot ? '\n' + msg.bot : ''));
+                    this.notify('success', this.t('copied'));
+                    this.closeContextMenu();
+                },
+                deleteMessage(index) {
+                    this.messages.splice(index, 1);
+                    this.saveHistory();
+                    this.notify('success', this.t('deleted'));
+                    this.closeContextMenu();
+                },
+                async saveHistory() {
+                    await window.electron.ipcRenderer.invoke('set-history', this.messages);
+                },
+                async loadHistory() {
+                    const history = await window.electron.ipcRenderer.invoke('get-history');
+                    this.messages = history;
+                },
+                showHistory: false,
+                toggleHistory() {
+                    console.log('toggleHistory called');
+                    this.showHistory = !this.showHistory;
+                },
+                async init() {
+                    const saved = await window.electron.ipcRenderer.invoke('get-settings');
+                    this.settings = { ...this.settings, ...saved };
+                    await this.loadHistory();
+                    this.isMaximized = await window.electron.ipcRenderer.window.isMaximized();
+                },
+                async saveSettings() {
+                    await window.electron.ipcRenderer.invoke('set-settings', {
+                        ...this.settings
+                    });
+                    this.showSettings = false;
+                },
+                async selectOutputDir() {
+                    const dir = await window.electron.ipcRenderer.invoke('select-directory');
+                    if (dir) this.settings.outputDir = dir;
+                },
+                changeLanguage(lang) {
+                    this.settings.language = lang;
+                },
+                async openFilePicker() {
+                    const filePaths = await window.electron.ipcRenderer.invoke('open-file-dialog');
+                    if (filePaths.length > 0) {
+                        await this.processFiles(filePaths);
+                    }
+                },
+                onDragOver(e) {
+                    this.dragCounter++;
+                    this.isDragging = true;
+                },
+                onDragLeave(e) {
+                    this.dragCounter--;
+                    if (this.dragCounter === 0) {
+                        this.isDragging = false;
+                    }
+                },
+                async handleDrop(e) {
+                    this.isDragging = false;
+                    this.dragCounter = 0;
+                    const files = Array.from(e.dataTransfer.files);
+                    const filePaths = files.map(file => file.path);
+                    await this.processFiles(filePaths);
+                },
+                async processFiles(filePaths) {
+                    const uniquePaths = filePaths.filter((path, idx, arr) => arr.indexOf(path) === idx);
+
+                    for (const filePath of uniquePaths) {
+                        if (this.messages.some(msg => msg.type === 'file' && msg.originalFile && msg.originalFile.path === filePath)) {
+                            continue;
+                        }
+                        const fileName = filePath.split('/').pop();
+                        this.messages.push({
+                            type: 'file',
+                            fileName,
+                            user: `${this.t('uploaded')} ${fileName}`,
+                            bot: this.t('processing'),
+                            originalFile: { path: filePath }
+                        });
+
+                        try {
+                            const response = await window.electron.ipcRenderer.invoke('anonymize-document', filePath);
+                            const lastMessage = this.messages[this.messages.length - 1];
+                            lastMessage.bot = this.t('anonymized');
+                            if (response.success && response.result && response.result.path) {
+                                lastMessage.anonymizedFile = { path: response.result.path };
+                            } else {
+                                lastMessage.anonymizedFile = null;
+                                lastMessage.bot = `${this.t('error')}: ${response.error || 'Не удалось анонимизировать файл'}`;
+                            }
+                        } catch (error) {
+                            const lastMessage = this.messages[this.messages.length - 1];
+                            lastMessage.bot = `${this.t('error')}: ` + error.message;
+                        }
+                    }
+                },
+                async sendMessage() {
+                    if (!this.newMessage.trim()) return;
+                    
+                    const userMessage = this.newMessage;
+                    this.messages.push({
+                        type: 'text',
+                        user: userMessage,
+                        bot: this.t('processing')
+                    });
+                    this.newMessage = '';
+
+                    try {
+                        const response = await window.electron.ipcRenderer.invoke('anonymize-text', userMessage);
+                        this.messages[this.messages.length - 1].bot = response.result;
+                    } catch (error) {
+                        this.messages[this.messages.length - 1].bot = `${this.t('error')}: ` + error.message;
+                    }
+                },
+                async downloadFile(file) {
+                    if (!file) return;
+                    const savePath = await window.electron.ipcRenderer.invoke('save-file-dialog', {
+                        defaultPath: file.path.split('/').pop()
+                    });
+                    if (savePath) {
+                        const readResult = await window.electron.ipcRenderer.invoke('read-file', file.path);
+                        if (readResult.success) {
+                            const result = await window.electron.ipcRenderer.invoke('save-file', {
+                                filePath: savePath,
+                                data: readResult.data
+                            });
+                            if (!result.success) {
+                                alert('Ошибка при сохранении файла: ' + result.error);
+                            }
+                        } else {
+                            alert('Ошибка при чтении файла: ' + readResult.error);
+                        }
+                    }
+                },
+                async previewFile(file) {
+                    if (!file) return;
+                    
+                    try {
+                        const result = await window.electron.ipcRenderer.invoke('read-file', file.path);
+                        if (result.success) {
+                            this.previewData = `data:${result.mimeType};base64,${result.data}`;
+                            this.previewType = result.mimeType.split('/')[0];
+                            this.previewFileName = file.path.split('/').pop();
+                            this.showPreview = true;
+                        }
+                    } catch (error) {
+                        alert('Ошибка при предпросмотре файла: ' + error.message);
+                    }
+                },
+                getFileIcon(fileName) {
+                    const ext = fileName.split('.').pop().toLowerCase();
+                    const icons = {
+                        'jpg': 'fas fa-image text-yellow-400',
+                        'jpeg': 'fas fa-image text-yellow-400',
+                        'png': 'fas fa-image text-blue-400',
+                        'gif': 'fas fa-image text-purple-400',
+                        'pdf': 'fas fa-file-pdf text-red-400',
+                        'doc': 'fas fa-file-word text-blue-500',
+                        'docx': 'fas fa-file-word text-blue-500',
+                        'txt': 'fas fa-file-alt text-gray-400'
+                    };
+                    return icons[ext] || 'fas fa-file text-gray-400';
+                },
+                openSettings() {
+                    this.showSettings = true;
+                },
+                onKeydown(e) {
+                    if (this.showSettings && e.key === 'Escape') {
+                        this.showSettings = false;
+                    }
+                    if (this.showPreview && e.key === 'Escape') {
+                        this.showPreview = false;
+                    }
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                        this.sendMessage();
+                    }
+                },
+                isMaximized: false,
+                async windowMinimize() { window.electron.ipcRenderer.window.minimize(); },
+                async windowClose() { window.electron.ipcRenderer.window.close(); },
+                async toggleMaximize() {
+                    const maximized = await window.electron.ipcRenderer.window.isMaximized();
+                    if (maximized) {
+                        window.electron.ipcRenderer.window.unmaximize();
+                        this.isMaximized = false;
+                    } else {
+                        window.electron.ipcRenderer.window.maximize();
+                        this.isMaximized = true;
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html> 
