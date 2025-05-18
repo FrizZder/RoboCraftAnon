@@ -67,7 +67,3 @@ npm run build
 - All processing is done locally
 - No data is sent to external servers
 - Files are processed in memory and not stored unless explicitly saved
-
-## License
-
-MIT
